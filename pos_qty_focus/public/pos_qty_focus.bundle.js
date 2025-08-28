@@ -59,10 +59,11 @@
 					const rowEl =
 						node.matches && (node.matches('.pos-bill-item, .cart-item-row, .cart-items .row') ? node : node.querySelector?.('.pos-bill-item, .cart-item-row, .cart-items .row'));
 					if (!rowEl) continue;
-					const qtyInput = findQtyInputForRow(rowEl);
-					if (qtyInput) {
-						// Defer a tick so any internal re-renders finish first
-						setTimeout(() => selectInput(qtyInput), 0);
+					// In v15, editable qty is in the right-side item details panel, not the cart row.
+					// So focus the qty field in item-details if present.
+					const detailsQty = document.querySelector('.item-details-container input[data-fieldname="qty"]');
+					if (detailsQty) {
+						setTimeout(() => selectInput(detailsQty), 0);
 						break;
 					}
 				}
@@ -74,6 +75,9 @@
 		// Also focus on first render of existing last row when POS loads or when cart refreshes
 		const tryFocusLastRow = () => {
 			if (!isPOSPage()) return;
+			// Prefer focusing the item-details qty if it exists
+			const detailsQty = document.querySelector('.item-details-container input[data-fieldname="qty"]');
+			if (detailsQty) { setTimeout(() => selectInput(detailsQty), 0); return; }
 			const rows = cartContainer.querySelectorAll('.pos-bill-item, .cart-item-row, .cart-items .row, .pos-bill .row');
 			if (rows.length === 0) return;
 			const last = rows[rows.length - 1];
