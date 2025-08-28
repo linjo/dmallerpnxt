@@ -1,8 +1,15 @@
 
 (function () {
+	function dbg() {
+		try {
+			if (typeof console !== 'undefined' && console.log) {
+				console.log.apply(console, ['[pos_qty_focus]'].concat(Array.from(arguments)));
+			}
+		} catch (e) {}
+	}
 	// Diagnostic marker so we can confirm asset is loaded
 	if (typeof window !== 'undefined') {
-		console && console.log && console.log('[pos_qty_focus] script loaded');
+		dbg('script loaded');
 	}
 	function isPOSPage() {
 		return frappe.get_route && frappe.get_route()[0] === "point-of-sale";
@@ -26,6 +33,7 @@
 			// help some UIs that open keypad on click
 			element.dispatchEvent(new Event('focus', { bubbles: true }));
 			element.dispatchEvent(new Event('click', { bubbles: true }));
+			dbg('focused qty element', element);
 		} catch (e) {
 			// ignore
 		}
@@ -50,6 +58,7 @@
 
 	function focusQtyOnAdd(cartContainer) {
 		if (!cartContainer) return;
+		dbg('setting observer on cart');
 		const observer = new MutationObserver((mutations) => {
 			if (!isPOSPage()) return;
 			for (const m of mutations) {
@@ -59,6 +68,7 @@
 					const rowEl =
 						node.matches && (node.matches('.pos-bill-item, .cart-item-row, .cart-items .row') ? node : node.querySelector?.('.pos-bill-item, .cart-item-row, .cart-items .row'));
 					if (!rowEl) continue;
+					dbg('detected new cart row, try focus item-details qty');
 					// In v15, editable qty is in the right-side item details panel, not the cart row.
 					// So focus the qty field in item-details if present.
 					const detailsQty = document.querySelector('.item-details-container input[data-fieldname="qty"]');
@@ -77,7 +87,7 @@
 			if (!isPOSPage()) return;
 			// Prefer focusing the item-details qty if it exists
 			const detailsQty = document.querySelector('.item-details-container input[data-fieldname="qty"]');
-			if (detailsQty) { setTimeout(() => selectInput(detailsQty), 0); return; }
+			if (detailsQty) { dbg('tryFocusLastRow focusing item-details qty'); setTimeout(() => selectInput(detailsQty), 0); return; }
 			const rows = cartContainer.querySelectorAll('.pos-bill-item, .cart-item-row, .cart-items .row, .pos-bill .row');
 			if (rows.length === 0) return;
 			const last = rows[rows.length - 1];
@@ -98,6 +108,7 @@
 		];
 		const container = candidates.find(Boolean);
 		if (container) {
+			dbg('cart container found');
 			focusQtyOnAdd(container);
 		}
 
@@ -114,12 +125,28 @@
 					selectInput(qtyInput);
 				}
 			}
-			if (tries > 40) clearInterval(poll); // ~12s max
+			if (tries % 10 === 0) dbg('poll tick', tries);
+			if (tries > 40) { dbg('stop poll'); clearInterval(poll); } // ~12s max
 		}, 300);
+
+		// Also hook item clicks to focus qty shortly after selection
+		const itemsContainer = document.querySelector('.items-container');
+		if (itemsContainer) {
+			itemsContainer.addEventListener('click', (ev) => {
+				const target = ev.target instanceof HTMLElement ? ev.target.closest('.item-wrapper') : null;
+				if (!target) return;
+				dbg('item clicked; attempt focus');
+				setTimeout(() => {
+					const detailsQty2 = document.querySelector('.item-details-container input[data-fieldname="qty"]');
+					if (detailsQty2) selectInput(detailsQty2);
+				}, 120);
+			}, { capture: true });
+		}
 	}
 
 	frappe.router && frappe.router.on && frappe.router.on('change', () => {
 		// run on every route change
+		dbg('route change');
 		setTimeout(initWhenPOSLoads, 50);
 	});
 
