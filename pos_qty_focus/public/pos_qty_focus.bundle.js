@@ -7,12 +7,37 @@
 			}
 		} catch (e) {}
 	}
+
+	function isPOSPage() {
+		// Check multiple ways to detect POS page
+		if (frappe.get_route && frappe.get_route()[0] === "point-of-sale") return true;
+		if (window.location.pathname.includes('point-of-sale')) return true;
+		if (document.querySelector('.point-of-sale-app')) return true;
+		if (document.querySelector('#page-point-of-sale')) return true;
+		return false;
+	}
+
 	// Diagnostic marker so we can confirm asset is loaded
 	if (typeof window !== 'undefined') {
 		dbg('script loaded');
-	}
-	function isPOSPage() {
-		return frappe.get_route && frappe.get_route()[0] === "point-of-sale";
+		// Add manual test button
+		setTimeout(() => {
+			const testBtn = document.createElement('button');
+			testBtn.textContent = 'Test Qty Focus';
+			testBtn.style.cssText = 'position:fixed;top:10px;right:10px;z-index:9999;background:red;color:white;padding:5px;border:none;border-radius:3px;';
+			testBtn.onclick = () => {
+				dbg('manual test clicked');
+				const qty = document.querySelector('.item-details-container input[data-fieldname="qty"]');
+				if (qty) {
+					dbg('found qty input, focusing');
+					selectInput(qty);
+				} else {
+					dbg('qty input not found');
+					dbg('available inputs:', document.querySelectorAll('input[data-fieldname="qty"]').length);
+				}
+			};
+			document.body.appendChild(testBtn);
+		}, 2000);
 	}
 
 	function selectInput(element) {
@@ -101,6 +126,7 @@
 
 	function initWhenPOSLoads() {
 		if (!isPOSPage()) return;
+		dbg('POS page detected, initializing');
 		// cart container candidates
 		const candidates = [
 			document.querySelector('.pos-cart, .cart-container, .cart-items, .pos-bill, .item-cart'),
@@ -110,6 +136,8 @@
 		if (container) {
 			dbg('cart container found');
 			focusQtyOnAdd(container);
+		} else {
+			dbg('no cart container found, candidates:', candidates);
 		}
 
 		// Fallback: small polling to focus last row qty if observer misses DOM events
@@ -133,7 +161,7 @@
 		const itemsContainer = document.querySelector('.items-container');
 		if (itemsContainer) {
 			itemsContainer.addEventListener('click', (ev) => {
-				const target = ev.target instanceof HTMLElement ? ev.target.closest('.item-wrapper') : null;
+				const target = ev.target instanceof HTMLElement ? ev.target.closest('.item-wrapper') ? ev.target.closest('.item-wrapper') : null : null;
 				if (!target) return;
 				dbg('item clicked; attempt focus');
 				setTimeout(() => {
@@ -152,6 +180,12 @@
 
 	// also run on first load
 	setTimeout(initWhenPOSLoads, 200);
+	// Also run every 2 seconds to catch late loading
+	setInterval(() => {
+		if (isPOSPage()) {
+			initWhenPOSLoads();
+		}
+	}, 2000);
 })();
 
 
