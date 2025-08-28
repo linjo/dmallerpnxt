@@ -1,5 +1,3 @@
-from pos_qty_focus import __version__ as app_version
-
 app_name = "pos_qty_focus"
 app_title = "POS Quantity Focus"
 app_publisher = "linjo"

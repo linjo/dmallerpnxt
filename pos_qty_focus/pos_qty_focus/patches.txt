@@ -1,3 +1,0 @@
-# No patches yet. This file exists to satisfy Frappe Cloud app validation.
-
-
