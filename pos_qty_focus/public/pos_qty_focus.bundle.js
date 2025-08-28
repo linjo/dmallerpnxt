@@ -11,8 +11,21 @@
 	function selectInput(element) {
 		if (!element) return;
 		try {
-			element.focus({ preventScroll: false });
-			element.select && element.select();
+			// handle input and contenteditable
+			if (element.getAttribute && element.getAttribute('contenteditable') === 'true') {
+				const range = document.createRange();
+				range.selectNodeContents(element);
+				const sel = window.getSelection();
+				sel.removeAllRanges();
+				sel.addRange(range);
+				element.focus({ preventScroll: false });
+			} else {
+				element.focus({ preventScroll: false });
+				element.select && element.select();
+			}
+			// help some UIs that open keypad on click
+			element.dispatchEvent(new Event('focus', { bubbles: true }));
+			element.dispatchEvent(new Event('click', { bubbles: true }));
 		} catch (e) {
 			// ignore
 		}
@@ -24,10 +37,13 @@
 		// 1) input[data-fieldname="qty"] within row
 		let el = rowEl.querySelector('input[data-fieldname="qty"]');
 		if (el) return el;
-		// 2) .qty input inside the row
+		// 2) contenteditable qty (some POS builds use contenteditable spans/divs)
+		el = rowEl.querySelector('[data-fieldname="qty"][contenteditable="true"], [data-fieldname="qty"] [contenteditable="true"]');
+		if (el) return el;
+		// 3) .qty input inside the row
 		el = rowEl.querySelector('.qty input, input.qty');
 		if (el) return el;
-		// 3) any numeric input that likely represents qty
+		// 4) any numeric input that likely represents qty
 		el = rowEl.querySelector('input[type="number"]');
 		return el;
 	}
@@ -58,7 +74,7 @@
 		// Also focus on first render of existing last row when POS loads or when cart refreshes
 		const tryFocusLastRow = () => {
 			if (!isPOSPage()) return;
-			const rows = cartContainer.querySelectorAll('.pos-bill-item, .cart-item-row, .cart-items .row');
+			const rows = cartContainer.querySelectorAll('.pos-bill-item, .cart-item-row, .cart-items .row, .pos-bill .row');
 			if (rows.length === 0) return;
 			const last = rows[rows.length - 1];
 			const qtyInput = findQtyInputForRow(last);
