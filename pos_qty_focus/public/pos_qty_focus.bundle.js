@@ -1,4 +1,9 @@
+
 (function () {
+	// Diagnostic marker so we can confirm asset is loaded
+	if (typeof window !== 'undefined') {
+		console && console.log && console.log('[pos_qty_focus] script loaded');
+	}
 	function isPOSPage() {
 		return frappe.get_route && frappe.get_route()[0] === "point-of-sale";
 	}
@@ -68,13 +73,29 @@
 		if (!isPOSPage()) return;
 		// cart container candidates
 		const candidates = [
-			document.querySelector('.pos-cart, .cart-container, .cart-items'),
-			document.querySelector('#page-point-of-sale .pos-cart, #page-point-of-sale .cart-container'),
+			document.querySelector('.pos-cart, .cart-container, .cart-items, .pos-bill, .item-cart'),
+			document.querySelector('#page-point-of-sale .pos-cart, #page-point-of-sale .cart-container, #page-point-of-sale .pos-bill'),
 		];
 		const container = candidates.find(Boolean);
 		if (container) {
 			focusQtyOnAdd(container);
 		}
+
+		// Fallback: small polling to focus last row qty if observer misses DOM events
+		let tries = 0;
+		const poll = setInterval(() => {
+			if (!isPOSPage()) { clearInterval(poll); return; }
+			tries += 1;
+			const rows = document.querySelectorAll('.pos-bill-item, .cart-item-row, .cart-items .row, .pos-bill .row');
+			if (rows.length) {
+				const last = rows[rows.length - 1];
+				const qtyInput = findQtyInputForRow(last);
+				if (qtyInput && document.activeElement !== qtyInput) {
+					selectInput(qtyInput);
+				}
+			}
+			if (tries > 40) clearInterval(poll); // ~12s max
+		}, 300);
 	}
 
 	frappe.router && frappe.router.on && frappe.router.on('change', () => {
