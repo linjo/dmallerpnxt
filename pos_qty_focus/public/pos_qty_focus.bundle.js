@@ -14,6 +14,9 @@
 		if (window.location.pathname.includes('point-of-sale')) return true;
 		if (document.querySelector('.point-of-sale-app')) return true;
 		if (document.querySelector('#page-point-of-sale')) return true;
+		if (document.querySelector('.items-container')) return true;
+		if (document.querySelector('.cart-container')) return true;
+		if (document.querySelector('.customer-cart-container')) return true;
 		return false;
 	}
 
@@ -27,6 +30,18 @@
 			testBtn.style.cssText = 'position:fixed;top:10px;right:10px;z-index:9999;background:red;color:white;padding:5px;border:none;border-radius:3px;';
 			testBtn.onclick = () => {
 				dbg('manual test clicked');
+				dbg('current URL:', window.location.pathname);
+				dbg('isPOSPage():', isPOSPage());
+				dbg('frappe.get_route():', frappe.get_route ? frappe.get_route() : 'undefined');
+				
+				// Check what elements exist
+				dbg('point-of-sale-app:', !!document.querySelector('.point-of-sale-app'));
+				dbg('#page-point-of-sale:', !!document.querySelector('#page-point-of-sale'));
+				dbg('.items-container:', !!document.querySelector('.items-container'));
+				dbg('.cart-container:', !!document.querySelector('.cart-container'));
+				dbg('.customer-cart-container:', !!document.querySelector('.customer-cart-container'));
+				
+				// Try to find qty input
 				const qty = document.querySelector('.item-details-container input[data-fieldname="qty"]');
 				if (qty) {
 					dbg('found qty input, focusing');
@@ -34,6 +49,17 @@
 				} else {
 					dbg('qty input not found');
 					dbg('available inputs:', document.querySelectorAll('input[data-fieldname="qty"]').length);
+					
+					// Show all qty-related elements
+					const allQtyInputs = document.querySelectorAll('input[data-fieldname="qty"]');
+					dbg('all qty inputs:', allQtyInputs);
+					
+					// Check item-details-container
+					const itemDetails = document.querySelector('.item-details-container');
+					dbg('item-details-container:', itemDetails);
+					if (itemDetails) {
+						dbg('item-details HTML:', itemDetails.innerHTML.substring(0, 200));
+					}
 				}
 			};
 			document.body.appendChild(testBtn);
@@ -125,7 +151,10 @@
 	}
 
 	function initWhenPOSLoads() {
-		if (!isPOSPage()) return;
+		if (!isPOSPage()) {
+			dbg('not POS page, skipping init');
+			return;
+		}
 		dbg('POS page detected, initializing');
 		// cart container candidates
 		const candidates = [
@@ -160,8 +189,9 @@
 		// Also hook item clicks to focus qty shortly after selection
 		const itemsContainer = document.querySelector('.items-container');
 		if (itemsContainer) {
+			dbg('setting up item click listener');
 			itemsContainer.addEventListener('click', (ev) => {
-				const target = ev.target instanceof HTMLElement ? ev.target.closest('.item-wrapper') ? ev.target.closest('.item-wrapper') : null : null;
+				const target = ev.target instanceof HTMLElement ? ev.target.closest('.item-wrapper') : null;
 				if (!target) return;
 				dbg('item clicked; attempt focus');
 				setTimeout(() => {
@@ -169,6 +199,8 @@
 					if (detailsQty2) selectInput(detailsQty2);
 				}, 120);
 			}, { capture: true });
+		} else {
+			dbg('items-container not found');
 		}
 	}
 
