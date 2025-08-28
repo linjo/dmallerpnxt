@@ -1,0 +1,4 @@
+include README.md
+recursive-include pos_qty_focus *.json *.md *.py *.txt *.html *.js *.css
+
+

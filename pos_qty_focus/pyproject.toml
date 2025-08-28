@@ -1,0 +1,5 @@
+[tool.frappe]
+name = "pos_qty_focus"
+version = "0.0.1"
+
+
