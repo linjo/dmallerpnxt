@@ -2,109 +2,41 @@
 (function () {
 	'use strict';
 	
-	// Global error handler to catch any issues
-	window.addEventListener('error', function(e) {
-		console.error('[pos_qty_focus] Global error:', e.error);
-	});
+	console.log('[pos_qty_focus] Script starting...');
 	
-	// Global promise rejection handler
-	window.addEventListener('unhandledrejection', function(e) {
-		console.error('[pos_qty_focus] Unhandled promise rejection:', e.reason);
-	});
-
-	function dbg() {
-		try {
-			if (typeof console !== 'undefined' && console.log) {
-				console.log.apply(console, ['[pos_qty_focus]'].concat(Array.from(arguments)));
-			}
-		} catch (e) {
-			console.error('[pos_qty_focus] dbg error:', e);
-		}
+	function dbg(msg) {
+		console.log('[pos_qty_focus]', msg);
 	}
-
+	
 	function isPOSPage() {
 		try {
-			// Check multiple ways to detect POS page
 			if (frappe && frappe.get_route && frappe.get_route()[0] === "point-of-sale") return true;
 			if (window.location.pathname.includes('point-of-sale')) return true;
 			if (document.querySelector('.point-of-sale-app')) return true;
-			if (document.querySelector('#page-point-of-sale')) return true;
 			if (document.querySelector('.items-container')) return true;
-			if (document.querySelector('.cart-container')) return true;
-			if (document.querySelector('.customer-cart-container')) return true;
 			return false;
 		} catch (e) {
-			dbg('isPOSPage error:', e);
+			dbg('isPOSPage error: ' + e);
 			return false;
 		}
 	}
-
-	function selectInput(element) {
-		if (!element) return;
+	
+	function focusQtyInput() {
 		try {
-			dbg('selectInput called with:', element);
-			// handle input and contenteditable
-			if (element.getAttribute && element.getAttribute('contenteditable') === 'true') {
-				const range = document.createRange();
-				range.selectNodeContents(element);
-				const sel = window.getSelection();
-				sel.removeAllRanges();
-				sel.addRange(range);
-				element.focus({ preventScroll: false });
-			} else {
-				element.focus({ preventScroll: false });
-				element.select && element.select();
+			const qtyInput = document.querySelector('.item-details-container input[data-fieldname="qty"]');
+			if (qtyInput) {
+				qtyInput.focus();
+				qtyInput.select();
+				dbg('Qty input focused!');
+				return true;
 			}
-			// help some UIs that open keypad on click
-			element.dispatchEvent(new Event('focus', { bubbles: true }));
-			element.dispatchEvent(new Event('click', { bubbles: true }));
-			dbg('focused qty element', element);
+			return false;
 		} catch (e) {
-			dbg('selectInput error:', e);
+			dbg('focusQtyInput error: ' + e);
+			return false;
 		}
 	}
-
-	function watchForQtyInput() {
-		try {
-			// Watch for changes in the form-container where qty input appears
-			const formContainer = document.querySelector('.item-details-container .form-container');
-			if (!formContainer) {
-				dbg('form-container not found, will retry');
-				return;
-			}
-
-			dbg('setting up form-container observer on:', formContainer);
-			const observer = new MutationObserver((mutations) => {
-				dbg('form-container mutation detected:', mutations.length, 'changes');
-				for (const mutation of mutations) {
-					if (mutation.type === 'childList') {
-						dbg('childList mutation:', mutation.addedNodes.length, 'added,', mutation.removedNodes.length, 'removed');
-						// Check if qty input was added
-						const qtyInput = formContainer.querySelector('input[data-fieldname="qty"]');
-						if (qtyInput) {
-							dbg('qty input detected in form-container, focusing');
-							setTimeout(() => selectInput(qtyInput), 100);
-							break;
-						} else {
-							dbg('no qty input found in form-container after mutation');
-							// Log what was added
-							for (const node of mutation.addedNodes) {
-								if (node instanceof HTMLElement) {
-									dbg('added node:', node.tagName, node.className, node.innerHTML.substring(0, 100));
-								}
-							}
-						}
-					}
-				}
-			});
-
-			observer.observe(formContainer, { childList: true, subtree: true });
-			dbg('form-container observer active');
-		} catch (e) {
-			dbg('watchForQtyInput error:', e);
-		}
-	}
-
+	
 	function setupItemClickWatcher() {
 		try {
 			const itemsContainer = document.querySelector('.items-container');
@@ -112,147 +44,117 @@
 				dbg('items-container not found');
 				return;
 			}
-
-			dbg('setting up item click listener on:', itemsContainer);
-			itemsContainer.addEventListener('click', (ev) => {
+			
+			dbg('Setting up item click listener');
+			itemsContainer.addEventListener('click', function(ev) {
 				try {
-					dbg('click event on:', ev.target);
-					const target = ev.target instanceof HTMLElement ? ev.target.closest('.item-wrapper') : null;
-					if (!target) {
-						dbg('no item-wrapper found, target was:', ev.target);
-						return;
-					}
+					const target = ev.target.closest('.item-wrapper');
+					if (!target) return;
 					
-					dbg('item clicked:', target);
-					// Wait a bit for the form to populate, then check for qty input
-					setTimeout(() => {
-						dbg('checking for qty input after item click...');
-						const qtyInput = document.querySelector('.item-details-container input[data-fieldname="qty"]');
-						if (qtyInput) {
-							dbg('qty input found after item click, focusing');
-							selectInput(qtyInput);
+					dbg('Item clicked, waiting for qty input...');
+					setTimeout(function() {
+						if (focusQtyInput()) {
+							dbg('Qty input focused after item click');
 						} else {
-							dbg('qty input not found after item click, will watch for it');
-							// Check what's in the form-container
-							const formContainer = document.querySelector('.item-details-container .form-container');
-							if (formContainer) {
-								dbg('form-container contents:', formContainer.innerHTML.substring(0, 200));
-							}
+							dbg('Qty input not found, will watch for it');
 							watchForQtyInput();
 						}
 					}, 150);
 				} catch (e) {
-					dbg('item click error:', e);
+					dbg('Item click error: ' + e);
 				}
-			}, { capture: true });
+			});
 		} catch (e) {
-			dbg('setupItemClickWatcher error:', e);
+			dbg('setupItemClickWatcher error: ' + e);
 		}
 	}
-
-	function initWhenPOSLoads() {
+	
+	function watchForQtyInput() {
 		try {
-			dbg('initWhenPOSLoads called');
-			if (!isPOSPage()) {
-				dbg('not POS page, skipping init');
+			const formContainer = document.querySelector('.item-details-container .form-container');
+			if (!formContainer) {
+				dbg('form-container not found');
 				return;
 			}
-			dbg('POS page detected, initializing');
 			
-			// Set up item click watcher
+			dbg('Setting up form-container observer');
+			const observer = new MutationObserver(function(mutations) {
+				for (const mutation of mutations) {
+					if (mutation.type === 'childList') {
+						if (focusQtyInput()) {
+							dbg('Qty input found via mutation observer');
+							break;
+						}
+					}
+				}
+			});
+			
+			observer.observe(formContainer, { childList: true, subtree: true });
+		} catch (e) {
+			dbg('watchForQtyInput error: ' + e);
+		}
+	}
+	
+	function init() {
+		try {
+			if (!isPOSPage()) {
+				dbg('Not POS page, skipping init');
+				return;
+			}
+			
+			dbg('POS page detected, initializing...');
 			setupItemClickWatcher();
-			
-			// Also watch for form-container changes
 			watchForQtyInput();
 			
-		} catch (e) {
-			dbg('initWhenPOSLoads error:', e);
-		}
-	}
-
-	// Main execution function
-	function main() {
-		try {
-			dbg('main function called');
-			
-			// Diagnostic marker so we can confirm asset is loaded
-			if (typeof window !== 'undefined') {
-				try {
-					dbg('script loaded');
-					// Add manual test button immediately
-					const testBtn = document.createElement('button');
-					testBtn.textContent = 'Test Qty Focus';
-					testBtn.style.cssText = 'position:fixed;top:10px;right:10px;z-index:9999;background:red;color:white;padding:5px;border:none;border-radius:3px;cursor:pointer;';
-					testBtn.onclick = function() {
-						try {
-							dbg('manual test clicked');
-							dbg('current URL:', window.location.pathname);
-							dbg('isPOSPage():', isPOSPage());
-							
-							// Check what elements exist
-							dbg('point-of-sale-app:', !!document.querySelector('.point-of-sale-app'));
-							dbg('items-container:', !!document.querySelector('.items-container'));
-							dbg('form-container:', !!document.querySelector('.item-details-container .form-container'));
-							
-							// Try to find qty input
-							const qty = document.querySelector('.item-details-container input[data-fieldname="qty"]');
-							if (qty) {
-								dbg('found qty input, focusing');
-								selectInput(qty);
-							} else {
-								dbg('qty input not found - click an item first');
-								dbg('available inputs:', document.querySelectorAll('input[data-fieldname="qty"]').length);
-							}
-						} catch (e) {
-							dbg('test button error:', e);
-						}
-					};
-					document.body.appendChild(testBtn);
-					dbg('test button added');
-				} catch (e) {
-					dbg('button creation error:', e);
-				}
-			}
-
-			try {
-				if (frappe && frappe.router && frappe.router.on) {
-					frappe.router.on('change', () => {
-						// run on every route change
-						dbg('route change');
-						setTimeout(initWhenPOSLoads, 50);
-					});
+			// Add test button
+			const testBtn = document.createElement('button');
+			testBtn.textContent = 'Test Qty Focus';
+			testBtn.style.cssText = 'position:fixed;top:10px;right:10px;z-index:9999;background:red;color:white;padding:5px;border:none;border-radius:3px;cursor:pointer;';
+			testBtn.onclick = function() {
+				dbg('Test button clicked');
+				if (focusQtyInput()) {
+					dbg('Test successful - qty input focused');
 				} else {
-					dbg('frappe.router not available');
+					dbg('Test failed - no qty input found');
 				}
-			} catch (e) {
-				dbg('router setup error:', e);
-			}
-
-			// also run on first load
-			setTimeout(initWhenPOSLoads, 200);
-			// Also run every 2 seconds to catch late loading
-			setInterval(() => {
-				try {
-					if (isPOSPage()) {
-						initWhenPOSLoads();
-					}
-				} catch (e) {
-					dbg('interval error:', e);
-				}
-			}, 2000);
+			};
+			document.body.appendChild(testBtn);
+			dbg('Test button added');
 			
 		} catch (e) {
-			dbg('main function error:', e);
+			dbg('Init error: ' + e);
 		}
 	}
-
-	// Execute main function
+	
+	// Start execution
 	try {
-		dbg('script starting execution');
-		main();
-		dbg('script execution completed');
+		dbg('Script loaded, starting execution...');
+		
+		// Run on page load
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', init);
+		} else {
+			init();
+		}
+		
+		// Also run on route changes
+		if (frappe && frappe.router && frappe.router.on) {
+			frappe.router.on('change', function() {
+				dbg('Route change detected');
+				setTimeout(init, 100);
+			});
+		}
+		
+		// Fallback: run every few seconds
+		setInterval(function() {
+			if (isPOSPage()) {
+				init();
+			}
+		}, 3000);
+		
+		dbg('Script execution completed');
 	} catch (e) {
-		dbg('script execution error:', e);
+		dbg('Critical error: ' + e);
 		console.error('[pos_qty_focus] Critical error:', e);
 	}
 })();
