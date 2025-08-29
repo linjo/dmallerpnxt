@@ -30,6 +30,7 @@
 	function selectInput(element) {
 		if (!element) return;
 		try {
+			dbg('selectInput called with:', element);
 			// handle input and contenteditable
 			if (element.getAttribute && element.getAttribute('contenteditable') === 'true') {
 				const range = document.createRange();
@@ -59,16 +60,26 @@
 			return;
 		}
 
-		dbg('setting up form-container observer');
+		dbg('setting up form-container observer on:', formContainer);
 		const observer = new MutationObserver((mutations) => {
+			dbg('form-container mutation detected:', mutations.length, 'changes');
 			for (const mutation of mutations) {
 				if (mutation.type === 'childList') {
+					dbg('childList mutation:', mutation.addedNodes.length, 'added,', mutation.removedNodes.length, 'removed');
 					// Check if qty input was added
 					const qtyInput = formContainer.querySelector('input[data-fieldname="qty"]');
 					if (qtyInput) {
 						dbg('qty input detected in form-container, focusing');
 						setTimeout(() => selectInput(qtyInput), 100);
 						break;
+					} else {
+						dbg('no qty input found in form-container after mutation');
+						// Log what was added
+						for (const node of mutation.addedNodes) {
+							if (node instanceof HTMLElement) {
+								dbg('added node:', node.tagName, node.className, node.innerHTML.substring(0, 100));
+							}
+						}
 					}
 				}
 			}
@@ -85,21 +96,31 @@
 			return;
 		}
 
-		dbg('setting up item click listener');
+		dbg('setting up item click listener on:', itemsContainer);
 		itemsContainer.addEventListener('click', (ev) => {
 			try {
+				dbg('click event on:', ev.target);
 				const target = ev.target instanceof HTMLElement ? ev.target.closest('.item-wrapper') : null;
-				if (!target) return;
+				if (!target) {
+					dbg('no item-wrapper found, target was:', ev.target);
+					return;
+				}
 				
-				dbg('item clicked, waiting for qty input to appear');
+				dbg('item clicked:', target);
 				// Wait a bit for the form to populate, then check for qty input
 				setTimeout(() => {
+					dbg('checking for qty input after item click...');
 					const qtyInput = document.querySelector('.item-details-container input[data-fieldname="qty"]');
 					if (qtyInput) {
 						dbg('qty input found after item click, focusing');
 						selectInput(qtyInput);
 					} else {
 						dbg('qty input not found after item click, will watch for it');
+						// Check what's in the form-container
+						const formContainer = document.querySelector('.item-details-container .form-container');
+						if (formContainer) {
+							dbg('form-container contents:', formContainer.innerHTML.substring(0, 200));
+						}
 						watchForQtyInput();
 					}
 				}, 150);
