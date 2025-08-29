@@ -1,13 +1,11 @@
 
 (function () {
-  function log(){ try{ console.log('[pos_qty_focus v3]', ...arguments);}catch{} }
+  function log(){ try{ console.log('[pos_qty_focus v3.1]', ...arguments);}catch{} }
 
   const CFG = {
     rowSelectors: ['.cart-item-wrapper'],
     rowClickTargetSelectors: [':scope', '.item-qty', '.qty', '.item-rate'],
-    // 👇 your popup/panel container
     detailsSelectors: ['.item-details-container'],
-    // 👇 qty input inside the panel
     detailsQtySelectors: [
       '.qty-control [data-fieldname="qty"] input',
       'input[data-fieldname="qty"]',
@@ -17,9 +15,11 @@
     clickDelayMs: 60,
     panelWaitMs: 2000,
     panelPollEveryMs: 60,
-    clickCooldownMs: 600
+    clickCooldownMs: 500
   };
 
+  let lastClickedRowName = null;
+  let lastFocusedPanelEl = null;
   let lastClickAt = 0;
 
   function routeHead(){
@@ -34,22 +34,24 @@
     if (!ok) log('not POS page; route=', h);
     return ok;
   }
-
   function isVisible(el){
     const s = el && window.getComputedStyle(el);
     return !!(el && s && s.display!=='none' && s.visibility!=='hidden');
+  }
+  function blockingModalPresent(){
+    // avoid focusing if a bootstrap modal is visible but aria-hidden (causes the a11y warning)
+    const m = document.querySelector('.modal.fade[aria-hidden="true"][style*="display"]');
+    return !!(m && isVisible(m));
   }
 
   function findNewestRow(root){
     for (const rs of CFG.rowSelectors){
       const rows = root.querySelectorAll(rs);
       if (rows.length){
-        log('rowSelector hit:', rs, 'count=', rows.length);
         return rows[rows.length-1];
       }
     }
   }
-
   function findRowClickTarget(row){
     for (const q of CFG.rowClickTargetSelectors){
       if (q === ':scope') return row;
@@ -58,72 +60,88 @@
     }
     return row;
   }
-
   function findDetailsPanel(){
     for (const q of CFG.detailsSelectors){
       const el = document.querySelector(q);
-      if (el && isVisible(el)) { log('details panel hit:', q); return el; }
+      if (el && isVisible(el)) return el;
     }
   }
-
   function findQtyInDetails(panel){
     for (const q of CFG.detailsQtySelectors){
       const el = panel.querySelector(q);
-      if (el && isVisible(el)) { log('qty in details via:', q, el); return el; }
+      if (el && isVisible(el)) return el;
     }
-    log('details panel missing qty input — check selectors');
   }
 
   function selectInput(el, why){
-    if (!el) return log('selectInput: no element', why);
-    try {
-      el.focus({ preventScroll:false });
-      el.select?.();
-      log('focused & selected qty', why, {tag: el.tagName, type: el.type, df: el.dataset?.fieldname});
-    } catch(e) {
-      log('focus/select failed', why, e?.message);
-    }
+    if (!el) return;
+    try { el.focus({ preventScroll:false }); el.select?.(); log('focused qty', why); }
+    catch(e){ log('focus failed', why, e?.message); }
+  }
+  function wirePanelHotkeys(panel){
+    if (panel.dataset.posQtyHotkeys) return; // once
+    panel.dataset.posQtyHotkeys = '1';
+    panel.addEventListener('keydown', (ev)=>{
+      if (ev.key === 'Enter'){
+        // commit: blur the qty (ERPNext will handle change)
+        const qty = findQtyInDetails(panel);
+        qty?.blur?.();
+      } else if (ev.key === 'Escape'){
+        // close the panel
+        const close = panel.querySelector('.close-btn, [data-action="close"], button.btn-modal-close');
+        if (close) close.click();
+      }
+    }, true);
   }
 
   function clickRowToOpenDetails(row, why){
     const now = Date.now();
-    if (now - lastClickAt < CFG.clickCooldownMs){
-      log('skip click (cooldown)');
-      return;
-    }
-    // If details already open, don't click again
-    const open = findDetailsPanel();
-    if (open){
-      log('skip click; details panel already open');
-      return;
-    }
+    if (now - lastClickAt < CFG.clickCooldownMs) return;
+    const rowName = row.getAttribute('data-row-name') || 'unknown';
+    if (rowName && rowName === lastClickedRowName) return; // already handled this row
+
     const target = findRowClickTarget(row);
     try {
       target.click();
       lastClickAt = now;
-      log('clicked row', why, target);
+      lastClickedRowName = rowName;
+      log('clicked row', why, rowName);
     } catch(e) {
       log('row click failed', e?.message);
+    }
+  }
+
+  function focusDetailsQtyOnce(panel){
+    if (panel === lastFocusedPanelEl) return; // already focused this instance
+    if (blockingModalPresent()){
+      // try again a little later if a hidden modal is conflicting
+      setTimeout(()=>focusDetailsQtyOnce(panel), 120);
+      return;
+    }
+    const qty = findQtyInDetails(panel);
+    if (qty){
+      selectInput(qty, 'details');
+      wirePanelHotkeys(panel);
+      lastFocusedPanelEl = panel;
     }
   }
 
   function openDetailsAndFocusQty(row, why){
     clickRowToOpenDetails(row, why);
     const start = Date.now();
-
-    const tick = ()=>{
+    const poll = ()=>{
       const panel = findDetailsPanel();
       if (panel){
-        const qty = findQtyInDetails(panel);
-        if (qty){ selectInput(qty, 'details'); return; }
+        focusDetailsQtyOnce(panel);
+        return;
       }
       if (Date.now() - start < CFG.panelWaitMs){
-        setTimeout(tick, CFG.panelPollEveryMs);
+        setTimeout(poll, CFG.panelPollEveryMs);
       } else {
-        log('details panel/qty not found within timeout');
+        log('details panel not found (timeout)');
       }
     };
-    setTimeout(tick, CFG.clickDelayMs);
+    setTimeout(poll, CFG.clickDelayMs);
   }
 
   function onAnyDOMChange(nodes){
@@ -131,47 +149,47 @@
     for (const n of nodes){
       if (!(n instanceof HTMLElement)) continue;
 
-      // If the added node is a row
-      if (CFG.rowSelectors.some(sel => n.matches?.(sel))){
-        openDetailsAndFocusQty(n, 'observer:node-is-row');
+      // new or updated details panel appeared → focus once
+      const det = n.matches?.('.item-details-container') ? n : n.querySelector?.('.item-details-container');
+      if (det && isVisible(det)){
+        focusDetailsQtyOnce(det);
         return;
       }
-      // Or contains a row
-      const r = findNewestRow(n);
-      if (r){
-        openDetailsAndFocusQty(r, 'observer:row-inside-node');
+
+      // new cart row → click + then focus
+      if (n.matches?.('.cart-item-wrapper') || n.querySelector?.('.cart-item-wrapper')){
+        const r = n.matches?.('.cart-item-wrapper') ? n : n.querySelector('.cart-item-wrapper');
+        openDetailsAndFocusQty(r, 'observer');
         return;
       }
     }
   }
 
   function start(){
-    log('MutationObserver on body');
+    log('observer start');
     const obs = new MutationObserver(muts=>{
       let added = [];
       muts.forEach(m => { if (m.addedNodes?.length) added = added.concat([...m.addedNodes]); });
-      if (added.length) log('mutation batch; addedNodes=', added.length);
-      onAnyDOMChange(added);
+      if (added.length) onAnyDOMChange(added);
     });
     obs.observe(document.body, { childList:true, subtree:true });
 
-    // If rows already exist, open the last one once
+    // first pass
     setTimeout(()=>{
       const r = findNewestRow(document);
       if (r) openDetailsAndFocusQty(r, 'first-pass');
-      else log('first-pass: no rows yet');
-    }, 500);
+    }, 400);
   }
 
   function init(){
-    if (!isPOSPage()) { log('init: not on POS page; route=', routeHead()); return; }
+    if (!isPOSPage()) { log('not POS'); return; }
     start();
   }
 
   if (frappe?.router?.on){
     frappe.router.on('change', ()=>{ log('route change'); setTimeout(init, 50); });
   }
-  setTimeout(()=>{ log('first init'); init(); }, 200);
+  setTimeout(init, 200);
 })();
 
 
